@@ -3,6 +3,7 @@ from PIL import Image
 
 from tqdm import tqdm
 
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -10,8 +11,8 @@ from torch.utils.data import DataLoader
 import clip
 from transformers import CLIPProcessor, CLIPModel
 
-json_path = 'path to train_data.json'
-image_path = 'path to training dataset'
+json_path = 'template_data.json'
+image_path = 'templates/'
 
 
 with open(json_path, 'r') as f:
@@ -54,7 +55,7 @@ list_image_path = []
 list_txt = []
 for item in input_data:
   img_path = image_path + item['image_path'].split('/')[-1]
-  caption = item['product_title'][:40]
+  caption = item['captions'][:40]
   list_image_path.append(img_path)
   list_txt.append(caption)
 
@@ -80,7 +81,7 @@ loss_img = nn.CrossEntropyLoss()
 loss_txt = nn.CrossEntropyLoss()
 
 # Train the model
-num_epochs = 30
+num_epochs = 2
 for epoch in range(num_epochs):
     pbar = tqdm(train_dataloader, total=len(train_dataloader))
     for batch in pbar:
@@ -108,3 +109,49 @@ for epoch in range(num_epochs):
             clip.model.convert_weights(model)
 
         pbar.set_description(f"Epoch {epoch}/{num_epochs}, Loss: {total_loss.item():.4f}")
+        
+print("Training complete.")
+
+# Testing the model with text input
+def find_similar_images(text_input, image_dir):
+    # Load and preprocess all images in the directory
+    image_paths = [os.path.join(image_dir, fname) for fname in os.listdir(image_dir) if fname.endswith(('png', 'jpg', 'jpeg'))]
+    images = []
+    valid_image_paths = []
+    for img_path in image_paths:
+        try:
+            image = preprocess(Image.open(img_path)).unsqueeze(0).to(device)
+            images.append(image)
+            valid_image_paths.append(img_path)
+        except Exception as e:
+            print(f"Error processing image {img_path}: {e}")
+
+    if not images:
+        print("No valid images found for testing.")
+        return []
+
+    images = torch.cat(images)  # Stack all image tensors
+
+    # Tokenize and encode the text input
+    text = clip.tokenize([text_input]).to(device)
+
+    with torch.no_grad():
+        image_features = model.encode_image(images)
+        text_features = model.encode_text(text)
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+
+        # Calculate similarity and sort images by similarity
+        similarities = (100.0 * text_features @ image_features.T).softmax(dim=-1)
+        sorted_indices = similarities.argsort(descending=True).squeeze().tolist()
+
+    sorted_image_paths = [valid_image_paths[idx] for idx in sorted_indices]
+    return sorted_image_paths
+
+# Example text input
+text_input = "a raised part of the earth's surface, much larger than a hill, the top of which might be covered in snow"
+similar_images = find_similar_images(text_input, image_path)
+
+print(f"Images sorted by similarity for text '{text_input}':")
+for img in similar_images:
+    print(img)
