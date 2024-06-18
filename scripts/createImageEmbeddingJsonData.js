@@ -22,7 +22,7 @@ const generateImageList = async () => {
     // Create the JSON array
     const imageList = imageFiles.map((file) => ({
       id: uuidv4(),
-      url: `src/images/${file}`,
+      url: `/images/${file}`,
     }));
 
     // Create the content for the JavaScript file
