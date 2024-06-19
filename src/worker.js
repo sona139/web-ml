@@ -7,15 +7,19 @@ import {
   CLIPVisionModelWithProjection,
 } from "@xenova/transformers";
 import imageEmbeddingJson from "./data/image-embedding-json.js";
+import { getCachedFile } from "./utils.js";
+import imageEmbeddingVectors from "./data/image-embedding-vectors.js";
 
 const EMBED_DIM = 512;
 
 // Skip local model check
 env.allowLocalModels = false;
-env.useBrowserCache = false;
+// env.useBrowserCache = false;
 
 class ApplicationSingleton {
   static model_id = "Xenova/clip-vit-base-patch16";
+  static BASE_URL =
+    "https://huggingface.co/datasets/Xenova/semantic-image-search-assets/resolve/main/";
 
   static tokenizer = null;
   static text_model = null;
@@ -39,16 +43,7 @@ class ApplicationSingleton {
       this.metadata = imageEmbeddingJson;
     }
     if (this.embeddings === null) {
-      let imageProcessor = AutoProcessor.from_pretrained(this.model_id);
-      let visionModel = CLIPVisionModelWithProjection.from_pretrained(
-        this.model_id,
-        { quantized: true }
-      );
-
-      this.imageProcessor = imageProcessor;
-      this.visionModel = visionModel;
-
-      //   this.embeddings = result;
+      this.embeddings = Object.values(imageEmbeddingVectors);
     }
 
     return Promise.all([
@@ -118,20 +113,14 @@ self.addEventListener("message", async (event) => {
   // Compute embeddings
   const { text_embeds } = await text_model(text_inputs);
 
-  const result = imageEmbeddingJson.map(async (data) => {
-    let image = await RawImage.read(data.url);
-    let imageInputs = await imageProcessor(image);
-    let { image_embeds } = await visionModel(imageInputs);
-    return image_embeds;
-  });
-
   console.log({
     metadata,
-    result,
+    // result,
+    embeddings,
   });
 
   // Compute similarity scores
-  const scores = cosineSimilarity(text_embeds.data, result);
+  const scores = cosineSimilarity(text_embeds.data, embeddings);
 
   // Make a copy of the metadata
   let output = metadata.slice(0);
@@ -145,7 +134,11 @@ self.addEventListener("message", async (event) => {
   output.sort((a, b) => b.score - a.score);
 
   // Get top 100 results
-  output = output.slice(0, 100);
+  output = output.slice(0, 3);
+
+  console.log({
+    output
+  })
 
   // Send the output back to the main thread
   self.postMessage({

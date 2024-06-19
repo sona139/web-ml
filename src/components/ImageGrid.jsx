@@ -1,6 +1,6 @@
 export function ImageGrid({ images, setCurrentImage }) {
   return (
-    <div>
+    <div style={{ display: 'flex', justifyContent: 'space-between'}}>
       {images &&
         images.map(({ id, url }) => (
           <div
